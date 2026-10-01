@@ -10,6 +10,7 @@ from app.pipelines.news import ingest_sofi_news
 from app.pipelines.ownership import ingest_insider_transactions, ingest_sofi_insider_transactions
 from app.pipelines.congress import ingest_sofi_congress_trades
 from app.pipelines.analyst import ingest_analyst_ratings, ingest_sofi_analyst_ratings
+from app.pipelines.executive import ingest_executive_trades
 
 log = structlog.get_logger()
 
@@ -45,6 +46,10 @@ async def sofi_insiders() -> None:
 async def sofi_congress(years: list[int] | None) -> None:
     inserted = await ingest_sofi_congress_trades(years=years)
     log.info("sofi_congress_complete", inserted=inserted)
+
+async def executive_trades() -> None:
+    inserted = await ingest_executive_trades()
+    log.info("executive_trades_complete", inserted=inserted)
 
 async def sofi_analyst_ratings() -> None:
     inserted = await ingest_sofi_analyst_ratings()
@@ -86,6 +91,7 @@ def main() -> None:
     sub.add_parser("sofi-insiders")
     congress = sub.add_parser("sofi-congress")
     congress.add_argument("--year", type=int, action="append", dest="years")
+    sub.add_parser("executive-trades")
     sub.add_parser("sofi-analyst-ratings")
     ratings = sub.add_parser("analyst-ratings")
     ratings.add_argument("symbols", nargs="+")
@@ -110,6 +116,8 @@ def main() -> None:
         asyncio.run(sofi_insiders())
     elif args.command == "sofi-congress":
         asyncio.run(sofi_congress(args.years))
+    elif args.command == "executive-trades":
+        asyncio.run(executive_trades())
     elif args.command == "sofi-analyst-ratings":
         asyncio.run(sofi_analyst_ratings())
     elif args.command == "analyst-ratings":

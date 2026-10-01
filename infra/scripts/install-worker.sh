@@ -166,11 +166,50 @@ Unit=finance-sofi-congress.service
 WantedBy=timers.target
 EOF
 
+cat >/etc/systemd/system/finance-executive-trades.service <<'EOF'
+[Unit]
+Description=FinanceFriday executive-branch OGE transaction ingestion
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/finance-platform/current
+Environment=AWS_REGION=${aws_region}
+Environment=AWS_DEFAULT_REGION=${aws_region}
+Environment=RDS_SECRET_ARN=${rds_secret_arn}
+Environment=RDS_ENDPOINT=${rds_endpoint}
+Environment=RDS_PORT=5432
+Environment=DB_NAME=${db_name}
+Environment=RAW_BUCKET_NAME=${artifact_bucket}
+ExecStart=/opt/finance-platform/venv/bin/python /opt/finance-platform/current/scripts/run_executive.py
+TimeoutStartSec=2h
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat >/etc/systemd/system/finance-executive-trades.timer <<'EOF'
+[Unit]
+Description=Poll public OGE executive transaction reports daily
+
+[Timer]
+OnCalendar=*-*-* 07:00:00 UTC
+Persistent=true
+RandomizedDelaySec=15min
+Unit=finance-executive-trades.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
 systemctl daemon-reload
 systemctl enable --now finance-sofi-hourly.timer
 systemctl enable --now finance-sofi-news-hourly.timer
 systemctl enable --now finance-sofi-insiders.timer
 systemctl enable --now finance-sofi-congress.timer
+systemctl enable --now finance-executive-trades.timer
 systemctl start finance-sofi-hourly.service
 
 cat >/etc/systemd/system/finance-sofi-analyst-ratings.service <<'EOF'
