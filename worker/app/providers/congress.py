@@ -13,9 +13,15 @@ from pypdf import PdfReader
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 
-SOFI_PATTERN = re.compile(r"(?:\bSOFI\b|SoFi\s+Technologies)", re.IGNORECASE)
 DATE_PATTERN = re.compile(r"\b(\d{1,2}/\d{1,2}/\d{2,4})\b")
 AMOUNT_PATTERN = re.compile(r"\$[\d,]+\s*-\s*\$[\d,]+|Over\s+\$[\d,]+", re.IGNORECASE)
+
+
+def matching_ticker(value: str, tickers: tuple[str, ...]) -> str | None:
+    for ticker in tickers:
+        if re.search(rf"\b{re.escape(ticker)}\b", value, re.IGNORECASE):
+            return ticker
+    return None
 
 
 def parse_date(value: str | None) -> date | None:
@@ -88,21 +94,26 @@ class HouseDisclosureProvider:
         return response.content
 
     @staticmethod
-    def parse_document(content: bytes, filing: dict[str, Any]) -> list[dict[str, Any]]:
+    def parse_document(
+        content: bytes,
+        filing: dict[str, Any],
+        tickers: tuple[str, ...] = ("SOFI",),
+    ) -> list[dict[str, Any]]:
         text = "\n".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(content)).pages)
-        if not SOFI_PATTERN.search(text):
+        if matching_ticker(text, tickers) is None:
             return []
         lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines() if line.strip()]
         results = []
         consumed: set[int] = set()
         for index, line in enumerate(lines):
-            if index in consumed or not SOFI_PATTERN.search(line):
+            ticker = matching_ticker(line, tickers)
+            if index in consumed or ticker is None:
                 continue
             asset_lines = [line]
-            if "SOFI" not in line.upper() and index + 1 < len(lines) and "SOFI" in lines[index + 1].upper():
+            if index + 1 < len(lines) and matching_ticker(lines[index + 1], tickers) == ticker:
                 asset_lines.append(lines[index + 1])
                 consumed.add(index + 1)
-            elif index > 0 and SOFI_PATTERN.search(lines[index - 1]):
+            elif index > 0 and matching_ticker(lines[index - 1], tickers) == ticker:
                 continue
             window = " | ".join(lines[index:index + 8])
             dates = DATE_PATTERN.findall(window)
@@ -117,6 +128,7 @@ class HouseDisclosureProvider:
             key = f"house:{filing['filing_id']}:{index}:{asset_name}:{dates[0]}:{code_match.group(1)}"
             results.append({
                 "provider_transaction_id": hashlib.sha256(key.encode()).hexdigest(),
+                "ticker": ticker,
                 "person_name": filing["person_name"], "person_title": "U.S. Representative",
                 "chamber": "house", "transaction_date": parse_date(dates[0]),
                 "disclosure_date": parse_date(dates[1]) if len(dates) > 1 else filing["filing_date"],
@@ -189,7 +201,11 @@ class SenateDisclosureProvider:
         return response.content
 
     @staticmethod
-    def parse_electronic_document(content: bytes, filing: dict[str, Any]) -> list[dict[str, Any]]:
+    def parse_electronic_document(
+        content: bytes,
+        filing: dict[str, Any],
+        tickers: tuple[str, ...] = ("SOFI",),
+    ) -> list[dict[str, Any]]:
         parser = _TableParser()
         parser.feed(content.decode("utf-8", errors="replace"))
         results = []
@@ -197,7 +213,11 @@ class SenateDisclosureProvider:
             if len(cells) < 9 or cells[0] == "#":
                 continue
             ticker, asset_name = cells[3].strip(), cells[4].strip()
-            if ticker.upper() != "SOFI" and not SOFI_PATTERN.search(asset_name):
+            matched_ticker = (
+                ticker.upper() if ticker.upper() in tickers
+                else matching_ticker(asset_name, tickers)
+            )
+            if matched_ticker is None:
                 continue
             label = cells[6].strip()
             if label.lower().startswith("purchase"):
@@ -211,7 +231,7 @@ class SenateDisclosureProvider:
             amount_range = cells[7].strip()
             amount_min, amount_max = amount_bounds(amount_range)
             key = f"senate:{filing['filing_id']}:{cells[0]}:{cells[1]}:{asset_name}:{label}"
-            results.append({"provider_transaction_id": hashlib.sha256(key.encode()).hexdigest(), "person_name": filing["person_name"], "person_title": "U.S. Senator", "chamber": "senate", "transaction_date": parse_date(cells[1]), "disclosure_date": filing["filing_date"], "filing_date": filing["filing_date"], "transaction_type": label, "transaction_code": code, "amount_range": amount_range, "amount_min": amount_min, "amount_max": amount_max, "asset_name": asset_name, "owner": cells[2].strip() or None, "signal": signal})
+            results.append({"provider_transaction_id": hashlib.sha256(key.encode()).hexdigest(), "ticker": matched_ticker, "person_name": filing["person_name"], "person_title": "U.S. Senator", "chamber": "senate", "transaction_date": parse_date(cells[1]), "disclosure_date": filing["filing_date"], "filing_date": filing["filing_date"], "transaction_type": label, "transaction_code": code, "amount_range": amount_range, "amount_min": amount_min, "amount_max": amount_max, "asset_name": asset_name, "owner": cells[2].strip() or None, "signal": signal})
         return results
 
 

@@ -23,3 +23,15 @@ def test_senate_electronic_ptr_parser() -> None:
     assert len(rows) == 1
     assert rows[0]["signal"] == "positive"
     assert rows[0]["owner"] == "Spouse"
+    assert rows[0]["ticker"] == "SOFI"
+
+
+def test_senate_parser_uses_tracked_ticker_universe() -> None:
+    html = b"""<table><tr><td>1</td><td>08/20/2026</td><td>Self</td><td>INTC</td><td>Intel Corporation</td><td>Stock</td><td>Sale</td><td>$15,001 - $50,000</td><td>--</td></tr></table>"""
+    filing = {"filing_id": "intel", "person_name": "Example Senator", "filing_date": date(2026, 9, 1)}
+    rows = SenateDisclosureProvider.parse_electronic_document(
+        html, filing, ("INTC", "SOFI")
+    )
+    assert len(rows) == 1
+    assert rows[0]["ticker"] == "INTC"
+    assert rows[0]["signal"] == "negative"
