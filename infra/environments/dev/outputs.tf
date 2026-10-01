@@ -26,3 +26,19 @@ output "alpaca_secret_arn" {
 output "fmp_secret_arn" {
   value = aws_secretsmanager_secret.fmp.arn
 }
+
+output "cloudwatch_dashboard_arn" {
+  value = aws_cloudwatch_dashboard.finance_dev.dashboard_arn
+}
+
+output "cloudwatch_dashboard_name" {
+  value = aws_cloudwatch_dashboard.finance_dev.dashboard_name
+}
+
+output "oam_sink_arn" {
+  value = aws_oam_sink.finance_monitoring.arn
+}
+
+output "oam_link_arn" {
+  value = aws_oam_link.finance_dev.arn
+}

@@ -15,6 +15,20 @@ provider "aws" {
   }
 }
 
+provider "aws" {
+  alias   = "admin"
+  profile = var.admin_aws_profile
+  region  = var.aws_region
+
+  default_tags {
+    tags = {
+      Project     = var.project_name
+      Environment = var.environment
+      ManagedBy   = "Terraform"
+    }
+  }
+}
+
 data "aws_caller_identity" "current" {}
 
 module "networking" {
@@ -108,15 +122,20 @@ resource "aws_s3_object" "worker_artifact" {
 }
 
 locals {
+  cloudwatch_agent_config = templatefile("${path.root}/../../templates/cloudwatch-agent.json.tftpl", {
+    metrics_collection_interval = 60
+  })
+
   install_worker_script = templatefile("${path.root}/../../scripts/install-worker.sh", {
-    artifact_bucket   = module.s3.raw_bucket_name
-    artifact_key      = aws_s3_object.worker_artifact.key
-    aws_region        = var.aws_region
-    rds_secret_arn    = module.rds.master_user_secret_arn
-    alpaca_secret_arn = aws_secretsmanager_secret.alpaca.arn
-    fmp_secret_arn    = aws_secretsmanager_secret.fmp.arn
-    rds_endpoint      = module.rds.endpoint
-    db_name           = var.db_name
+    artifact_bucket                = module.s3.raw_bucket_name
+    artifact_key                   = aws_s3_object.worker_artifact.key
+    aws_region                     = var.aws_region
+    rds_secret_arn                 = module.rds.master_user_secret_arn
+    alpaca_secret_arn              = aws_secretsmanager_secret.alpaca.arn
+    fmp_secret_arn                 = aws_secretsmanager_secret.fmp.arn
+    rds_endpoint                   = module.rds.endpoint
+    db_name                        = var.db_name
+    cloudwatch_agent_config_base64 = base64encode(local.cloudwatch_agent_config)
   })
 }
 

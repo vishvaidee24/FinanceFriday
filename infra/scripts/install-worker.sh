@@ -5,7 +5,7 @@ install_root=/opt/finance-platform
 release_dir="$${install_root}/current"
 artifact=/tmp/finance-platform-worker.zip
 
-dnf install -y python3.12 python3.12-pip unzip
+dnf install -y python3.12 python3.12-pip unzip amazon-cloudwatch-agent
 mkdir -p "$${release_dir}"
 aws s3 cp "s3://${artifact_bucket}/${artifact_key}" "$${artifact}"
 rm -rf "$${release_dir:?}"/*
@@ -13,6 +13,13 @@ unzip -q "$${artifact}" -d "$${release_dir}"
 python3.12 -m venv "$${install_root}/venv"
 "$${install_root}/venv/bin/python" -m pip install --upgrade pip
 "$${install_root}/venv/bin/pip" install "$${release_dir}"
+
+mkdir -p /opt/aws/amazon-cloudwatch-agent/etc
+echo '${cloudwatch_agent_config_base64}' | base64 -d \
+  >/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a fetch-config -m ec2 \
+  -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
 
 cat >/etc/systemd/system/finance-sofi-hourly.service <<'EOF'
 [Unit]

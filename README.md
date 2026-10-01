@@ -170,3 +170,64 @@ Suggested implementation order:
 V1 AWS target: approximately `$25–35/month` once the application infrastructure is running.
 
 Creating the AWS Organization, OU, and member account does not itself add an AWS Organizations fee. Mandatory paid data subscriptions: `$0`.
+
+## Cross-account monitoring
+
+The existing account selected by the local `default` AWS profile owns the
+`finance-dev` CloudWatch dashboard and OAM sink. The `finance-dev` member
+account owns the EC2 worker, RDS database, log groups, native metrics, CWAgent
+metrics, and `FinanceDev/Ingestion` application metrics. Terraform does not
+create another AWS account.
+
+OAM links `finance-dev` to the sink and permits only account
+`finance_account_id` to share `AWS::CloudWatch::Metric` and
+`AWS::Logs::LogGroup`. Dashboard widgets use CloudWatch's cross-account
+`accountId` property. The sink policy does not allow a wildcard principal.
+
+Required local authentication:
+
+- `default`: credentials for the existing dashboard/management account
+- the existing organization access role in `finance-dev`, assumed by the
+  default Terraform provider
+
+Terraform also grants the existing `admin_monitoring_user_name` IAM user
+read-only access to the dashboard, CloudWatch metrics, and OAM link metadata.
+
+Set `admin_account_id`, `finance_account_id`, and `admin_aws_profile` in the
+ignored `infra/environments/dev/terraform.tfvars`. Then run:
+
+```powershell
+terraform -chdir=infra/environments/dev fmt -recursive
+terraform -chdir=infra/environments/dev init
+terraform -chdir=infra/environments/dev validate
+terraform -chdir=infra/environments/dev plan -out=monitoring.tfplan
+terraform -chdir=infra/environments/dev apply monitoring.tfplan
+```
+
+Terraform creates an OAM sink and dashboard in the default-profile account, an
+OAM link and worker IAM policy in `finance-dev`, and updates the existing worker
+bootstrap package. It does not create or replace EC2 or RDS.
+
+Verify OAM and dashboard resources:
+
+```powershell
+aws oam list-sinks --profile default --region us-east-1
+aws oam list-links --profile finance-dev --region us-east-1
+aws cloudwatch get-dashboard --dashboard-name finance-dev --profile default --region us-east-1
+```
+
+Verify fresh agent and application metrics in `finance-dev`:
+
+```powershell
+aws cloudwatch list-metrics --namespace CWAgent --profile finance-dev --region us-east-1
+aws cloudwatch list-metrics --namespace FinanceDev/Ingestion --profile finance-dev --region us-east-1
+```
+
+The worker bootstrap installs the CloudWatch Agent and collects
+`mem_used_percent` and root `disk_used_percent` every 60 seconds. The shared
+Python helper in `worker/app/common/metrics.py` publishes ingestion counts,
+errors, stock freshness, and execution duration through the EC2 instance role.
+Metrics are best effort: a CloudWatch outage cannot fail an ingestion run.
+Options widgets intentionally remain empty until an options pipeline calls
+`publish_options_rows`. Newly shared OAM metrics may not appear in the
+monitoring account until their next datapoint is emitted.

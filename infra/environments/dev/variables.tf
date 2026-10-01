@@ -13,6 +13,28 @@ variable "finance_account_id" {
   }
 }
 
+variable "admin_account_id" {
+  description = "AWS account ID that owns the OAM sink and CloudWatch dashboard."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9]{12}$", var.admin_account_id))
+    error_message = "admin_account_id must be a 12-digit AWS account ID."
+  }
+}
+
+variable "admin_aws_profile" {
+  description = "Local AWS profile used by the aliased admin provider."
+  type        = string
+  default     = "default"
+}
+
+variable "admin_monitoring_user_name" {
+  description = "Existing IAM user in the default account that views the cross-account dashboard."
+  type        = string
+  default     = "vishvaidee"
+}
+
 variable "organization_access_role_name" {
   description = "Cross-account role created by AWS Organizations in finance-dev."
   type        = string
