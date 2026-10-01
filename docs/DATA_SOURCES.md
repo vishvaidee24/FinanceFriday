@@ -16,3 +16,6 @@
 | Polymarket | Public API | Free |
 
 Deferred paid feeds should be introduced behind provider interfaces.
+
+See [INGESTIONS.md](INGESTIONS.md) for the current schedules, runners,
+destinations, and raw archive paths.
