@@ -52,12 +52,19 @@ $SsmParameters = @{
     localPortNumber = @("$LocalPort")
 } | ConvertTo-Json -Compress
 
-aws ssm start-session `
-    --target $WorkerId `
-    --document-name AWS-StartPortForwardingSessionToRemoteHost `
-    --parameters $SsmParameters `
-    --profile $Profile `
-    --region $Region
+$ParameterFile = Join-Path ([System.IO.Path]::GetTempPath()) "financefriday-ssm-parameters.json"
+$SsmParameters | Set-Content -LiteralPath $ParameterFile -Encoding Ascii
+
+try {
+    aws ssm start-session `
+        --target $WorkerId `
+        --document-name AWS-StartPortForwardingSessionToRemoteHost `
+        --parameters "file://$($ParameterFile.Replace('\', '/'))" `
+        --profile $Profile `
+        --region $Region
+} finally {
+    Remove-Item -LiteralPath $ParameterFile -Force -ErrorAction SilentlyContinue
+}
 
 if ($LASTEXITCODE -ne 0) {
     throw "The SSM port-forwarding session ended with an error."
