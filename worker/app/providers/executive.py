@@ -1,3 +1,4 @@
+import csv
 import hashlib
 import html
 import io
@@ -17,6 +18,10 @@ from tenacity import (
 from app.providers.congress import amount_bounds, parse_date, transaction_meaning
 
 OGE_CATALOG_URL = "https://extapps2.oge.gov/201/Presiden.nsf/API.xsp/v2/rest"
+DISCLOSED_CAPITOL_URL = (
+    "https://raw.githubusercontent.com/disclosedcapitol/"
+    "executive-branch-trades/main/data/executive_trades.csv"
+)
 EARLIEST_TRANSACTION_DATE = date(2016, 1, 1)
 PDF_LINK_PATTERN = re.compile(r"href=['\"]([^'\"]+\.pdf)['\"]", re.IGNORECASE)
 TICKER_PATTERN = re.compile(r"\(([A-Z][A-Z0-9.\-]{0,9})\)\s*$")
@@ -150,3 +155,90 @@ class OgeDisclosureProvider:
                 }
             )
         return results
+
+
+class DisclosedCapitolProvider:
+    def __init__(self) -> None:
+        self.client = httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=90,
+            headers={"User-Agent": "FinanceFriday personal financial research"},
+        )
+
+    async def close(self) -> None:
+        await self.client.aclose()
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(min=1, max=8),
+        retry=retry_if_exception_type(httpx.HTTPError),
+    )
+    async def dataset(self) -> bytes:
+        response = await self.client.get(DISCLOSED_CAPITOL_URL)
+        response.raise_for_status()
+        return response.content
+
+    @staticmethod
+    def parse_dataset(content: bytes) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
+        for source in reader:
+            transaction_date = date.fromisoformat(source["transaction_date"])
+            if transaction_date < EARLIEST_TRANSACTION_DATE:
+                continue
+            filing_date = (
+                date.fromisoformat(source["filing_date"])
+                if source.get("filing_date")
+                else None
+            )
+            transaction_type = source["transaction_type"].strip().lower()
+            if transaction_type.startswith(("buy", "purchase")):
+                signal = "positive"
+            elif transaction_type.startswith(("sale", "sell")):
+                signal = "negative"
+            elif transaction_type.startswith("exchange"):
+                signal = "neutral"
+            else:
+                signal = "unclear"
+            amount_range = source.get("amount_range") or None
+            amount_min, amount_max = amount_bounds(amount_range)
+            filing_id = (source.get("source_filing_id") or "").strip()
+            if not filing_id:
+                identity = "|".join(
+                    (
+                        source["filer_name"], source.get("filing_date") or "",
+                        source.get("filing_type") or "", source["transaction_date"],
+                    )
+                )
+                filing_id = hashlib.sha256(identity.encode()).hexdigest()
+            identity = "|".join(
+                source.get(field, "")
+                for field in (
+                    "filer_name", "ticker", "asset_description", "transaction_type",
+                    "transaction_date", "amount_range", "filing_date", "filing_type",
+                    "source_filing_id",
+                )
+            )
+            ticker = (source.get("ticker") or "").strip().upper() or None
+            rows.append(
+                {
+                    "provider_transaction_id": hashlib.sha256(identity.encode()).hexdigest(),
+                    "filing_id": filing_id,
+                    "person_name": source["filer_name"].strip(),
+                    "person_title": (source.get("role_title") or None),
+                    "agency": (source.get("agency") or None),
+                    "transaction_date": transaction_date,
+                    "filing_date": filing_date,
+                    "filing_type": source.get("filing_type") or "278-T",
+                    "transaction_type": transaction_type,
+                    "amount_min": amount_min,
+                    "amount_max": amount_max,
+                    "amount_range": amount_range,
+                    "asset_name": source["asset_description"].strip(),
+                    "reported_ticker": ticker,
+                    "owner": None,
+                    "signal": signal,
+                    "source_url": source.get("disclosedcapitol_url") or DISCLOSED_CAPITOL_URL,
+                }
+            )
+        return rows

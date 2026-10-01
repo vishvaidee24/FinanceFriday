@@ -2,7 +2,11 @@ from datetime import date
 from decimal import Decimal
 from typing import ClassVar
 
-from app.providers.executive import OgeDisclosureProvider, _catalog_date
+from app.providers.executive import (
+    DisclosedCapitolProvider,
+    OgeDisclosureProvider,
+    _catalog_date,
+)
 
 
 def test_catalog_date() -> None:
@@ -67,3 +71,15 @@ def test_parser_rejects_ocr_dates_outside_supported_window() -> None:
     finally:
         module.PdfReader = original
     assert rows == []
+
+
+def test_disclosed_capitol_parser_keeps_2016_and_biden_rows() -> None:
+    content = b"""filer_name,role_title,agency,ticker,asset_description,transaction_type,transaction_date,amount_range,filing_date,filing_type,source_filing_id,disclosedcapitol_url
+Old Official,Secretary,Agency,ABC,ABC Inc. (ABC),Sale,2015-12-31,"$1,001 - $15,000",2016-01-15,278-T,old,https://example.test/old
+Biden Official,Secretary,Agency,XYZ,XYZ Inc. (XYZ),Buy,2022-03-04,"$15,001 - $50,000",2022-03-20,278-T,biden,https://example.test/biden
+"""
+    rows = DisclosedCapitolProvider.parse_dataset(content)
+    assert len(rows) == 1
+    assert rows[0]["person_name"] == "Biden Official"
+    assert rows[0]["reported_ticker"] == "XYZ"
+    assert rows[0]["signal"] == "positive"

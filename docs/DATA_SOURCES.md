@@ -7,6 +7,8 @@
 | SEC filings | SEC EDGAR | Free |
 | Fundamentals | SEC CompanyFacts | Free |
 | Insider trades | SEC Form 4 | Free |
+| Executive disclosures | U.S. Office of Government Ethics Form 278/278-T | Free |
+| Historical executive trades | [Disclosed Capitol executive-branch-trades](https://github.com/disclosedcapitol/executive-branch-trades), derived from official OGE filings (CC BY 4.0) | Free |
 | News | RSS / company IR | Free |
 | Bonds | FINRA | Free where accessible |
 | Reddit | Reddit API | Free where accessible |
