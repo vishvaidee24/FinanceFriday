@@ -1,4 +1,4 @@
-"""Load the RDS secret from AWS and run daily SOFI analyst-rating ingestion."""
+"""Load secrets and ingest ratings for active database securities."""
 
 import json
 import os
@@ -25,7 +25,7 @@ def main() -> None:
     os.environ["FMP_API_KEY"] = fmp["FMP_API_KEY"]
     os.execv(
         sys.executable,
-        [sys.executable, "-m", "app.cli", "analyst-ratings", "SOFI", "INTC"],
+        [sys.executable, "-m", "app.cli", "tracked-analyst-ratings"],
     )
 
 

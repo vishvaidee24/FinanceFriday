@@ -1,4 +1,4 @@
-"""Load secrets from AWS and run the hourly SOFI ingestion."""
+"""Load secrets from AWS and ingest bars for active database securities."""
 
 import json
 import os
@@ -30,11 +30,10 @@ def main() -> None:
     os.environ["ALPACA_API_KEY"] = alpaca["ALPACA_API_KEY"]
     os.environ["ALPACA_API_SECRET"] = alpaca["ALPACA_API_SECRET"]
 
-    symbols = os.environ.get("STOCK_SYMBOLS", "SOFI,INTC").replace(",", " ").split()
     minutes = os.environ.get("BAR_LOOKBACK_MINUTES", "120")
     os.execv(
         sys.executable,
-        [sys.executable, "-m", "app.cli", "stock-bars", *symbols, "--minutes", minutes],
+        [sys.executable, "-m", "app.cli", "tracked-stock-bars", "--minutes", minutes],
     )
 
 

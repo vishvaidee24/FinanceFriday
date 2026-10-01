@@ -16,7 +16,7 @@ python3.12 -m venv "$${install_root}/venv"
 
 cat >/etc/systemd/system/finance-sofi-hourly.service <<'EOF'
 [Unit]
-Description=FinanceFriday hourly SOFI one-minute bar ingestion
+Description=FinanceFriday hourly tracked-security one-minute bar ingestion
 After=network-online.target
 Wants=network-online.target
 
@@ -40,7 +40,7 @@ EOF
 
 cat >/etc/systemd/system/finance-sofi-hourly.timer <<'EOF'
 [Unit]
-Description=Run FinanceFriday SOFI ingestion every hour
+Description=Run FinanceFriday tracked-security ingestion every hour
 
 [Timer]
 OnCalendar=hourly
@@ -92,7 +92,7 @@ EOF
 
 cat >/etc/systemd/system/finance-sofi-insiders.service <<'EOF'
 [Unit]
-Description=FinanceFriday SOFI SEC insider transaction ingestion
+Description=FinanceFriday tracked-security SEC insider transaction ingestion
 After=network-online.target
 Wants=network-online.target
 
@@ -117,7 +117,7 @@ EOF
 
 cat >/etc/systemd/system/finance-sofi-insiders.timer <<'EOF'
 [Unit]
-Description=Poll SEC SOFI Forms 3, 4, and 5 every 15 minutes
+Description=Poll SEC Forms 3, 4, and 5 for tracked securities every 15 minutes
 
 [Timer]
 OnCalendar=*:0/15
@@ -175,7 +175,7 @@ systemctl start finance-sofi-hourly.service
 
 cat >/etc/systemd/system/finance-sofi-analyst-ratings.service <<'EOF'
 [Unit]
-Description=FinanceFriday daily SOFI analyst-rating ingestion
+Description=FinanceFriday daily tracked-security analyst-rating ingestion
 After=network-online.target
 Wants=network-online.target
 
@@ -200,7 +200,7 @@ EOF
 
 cat >/etc/systemd/system/finance-sofi-analyst-ratings.timer <<'EOF'
 [Unit]
-Description=Poll FMP SOFI analyst ratings daily
+Description=Poll FMP analyst ratings for tracked securities daily
 
 [Timer]
 OnCalendar=*-*-* 07:00:00 UTC

@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import structlog
 from app.common.logging import configure_logging
 from app.db.connection import get_connection
+from app.db.securities import list_tracked_securities
 from app.pipelines.stock_bars import aggregate_stock_bars_1h, ingest_stock_bars
 from app.pipelines.news import ingest_sofi_news
 from app.pipelines.ownership import ingest_insider_transactions, ingest_sofi_insider_transactions
@@ -24,6 +25,10 @@ async def stock_bars(symbols: list[str], minutes: int) -> None:
     start = end - timedelta(minutes=minutes)
     inserted = await ingest_stock_bars(symbols=symbols, start=start, end=end)
     log.info("stock_bars_complete", symbols=symbols, inserted=inserted)
+
+async def tracked_stock_bars(minutes: int) -> None:
+    for security in list_tracked_securities():
+        await stock_bars([security.ticker], minutes)
 
 def stock_bars_1h(symbols: list[str]) -> None:
     affected = aggregate_stock_bars_1h(symbols=symbols)
@@ -50,13 +55,19 @@ async def analyst_ratings(symbols: list[str]) -> None:
         inserted = await ingest_analyst_ratings(symbol)
         log.info("analyst_ratings_complete", symbol=symbol.upper(), inserted=inserted)
 
+async def tracked_analyst_ratings() -> None:
+    await analyst_ratings(
+        [security.ticker for security in list_tracked_securities()]
+    )
+
 async def insiders(symbol: str, cik: str) -> None:
     inserted = await ingest_insider_transactions(symbol=symbol, cik=cik)
     log.info("insiders_complete", symbol=symbol.upper(), inserted=inserted)
 
 async def tracked_insiders() -> None:
-    for symbol, cik in (("SOFI", "1818874"), ("INTC", "50863")):
-        await insiders(symbol, cik)
+    for security in list_tracked_securities(require_cik=True):
+        if security.cik is not None:
+            await insiders(security.ticker, security.cik)
 
 def main() -> None:
     configure_logging()
@@ -67,6 +78,8 @@ def main() -> None:
     bars = sub.add_parser("stock-bars")
     bars.add_argument("symbols", nargs="+")
     bars.add_argument("--minutes", type=int, default=15)
+    tracked_bars = sub.add_parser("tracked-stock-bars")
+    tracked_bars.add_argument("--minutes", type=int, default=15)
     hourly_bars = sub.add_parser("stock-bars-1h")
     hourly_bars.add_argument("symbols", nargs="+")
     sub.add_parser("sofi-news")
@@ -76,6 +89,7 @@ def main() -> None:
     sub.add_parser("sofi-analyst-ratings")
     ratings = sub.add_parser("analyst-ratings")
     ratings.add_argument("symbols", nargs="+")
+    sub.add_parser("tracked-analyst-ratings")
     insider = sub.add_parser("insiders")
     insider.add_argument("symbol")
     insider.add_argument("cik")
@@ -86,6 +100,8 @@ def main() -> None:
         health()
     elif args.command == "stock-bars":
         asyncio.run(stock_bars(args.symbols, args.minutes))
+    elif args.command == "tracked-stock-bars":
+        asyncio.run(tracked_stock_bars(args.minutes))
     elif args.command == "stock-bars-1h":
         stock_bars_1h(args.symbols)
     elif args.command == "sofi-news":
@@ -98,6 +114,8 @@ def main() -> None:
         asyncio.run(sofi_analyst_ratings())
     elif args.command == "analyst-ratings":
         asyncio.run(analyst_ratings(args.symbols))
+    elif args.command == "tracked-analyst-ratings":
+        asyncio.run(tracked_analyst_ratings())
     elif args.command == "insiders":
         asyncio.run(insiders(args.symbol, args.cik))
     elif args.command == "tracked-insiders":
