@@ -23,8 +23,8 @@ resource "aws_db_instance" "this" {
   engine_version = "17"
   instance_class = var.db_instance_class
 
-  db_name  = var.db_name
-  username = var.db_username
+  db_name                     = var.db_name
+  username                    = var.db_username
   manage_master_user_password = true
 
   allocated_storage     = var.allocated_storage
