@@ -1,0 +1,10 @@
+aws_region = "us-east-1"
+
+# Must be globally unique and must not already belong to an AWS account.
+# An email alias can be convenient if your provider supports it.
+finance_account_email = "yourname+aws-finance-dev@example.com"
+
+finance_account_name          = "finance-dev"
+finance_ou_name               = "Finance"
+organization_access_role_name = "OrganizationAccountAccessRole"
+project_name                  = "finance-platform"

@@ -1,0 +1,11 @@
+aws_region = "us-east-1"
+
+# Set this to: terraform -chdir=infra/organization output -raw finance_dev_account_id
+finance_account_id = "123456789012"
+
+organization_access_role_name = "OrganizationAccountAccessRole"
+project_name                  = "finance-platform"
+environment                   = "dev"
+db_instance_class             = "db.t4g.micro"
+db_allocated_storage          = 20
+db_max_allocated_storage      = 100

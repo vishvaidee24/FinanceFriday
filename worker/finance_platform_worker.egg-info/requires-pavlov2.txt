@@ -1,0 +1,12 @@
+boto3>=1.35
+httpx>=0.28
+psycopg[binary]>=3.2
+pydantic>=2.10
+pydantic-settings>=2.7
+structlog>=24.4
+tenacity>=9.0
+feedparser>=6.0
+
+[dev]
+pytest>=8.3
+ruff>=0.9

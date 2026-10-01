@@ -1,0 +1,23 @@
+Metadata-Version: 2.4
+Name: finance-platform-worker
+Version: 0.1.0
+Summary: Finance platform ingestion worker
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+Requires-Dist: httpx>=0.27
+Requires-Dist: psycopg[binary]>=3.2
+Requires-Dist: boto3>=1.34
+Requires-Dist: pydantic>=2.7
+Requires-Dist: pydantic-settings>=2.2
+Requires-Dist: tenacity>=8.2
+Requires-Dist: structlog>=24.1
+Requires-Dist: pypdf>=5.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+Requires-Dist: pytest-cov>=5.0; extra == "dev"
+Requires-Dist: ruff>=0.5; extra == "dev"
+Requires-Dist: mypy>=1.10; extra == "dev"
+
+# Finance Platform Worker
+
+Python ingestion worker for the FinanceFriday data platform.
