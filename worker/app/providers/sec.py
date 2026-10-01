@@ -36,6 +36,20 @@ class SecProvider:
         wait=wait_exponential(multiplier=1, min=1, max=8),
         reraise=True,
     )
+    async def get_submission_file(self, filename: str) -> dict:
+        if not filename.startswith("CIK") or not filename.endswith(".json") or "/" in filename:
+            raise ValueError("invalid SEC submissions filename")
+        url = f"https://data.sec.gov/submissions/{filename}"
+        async with httpx.AsyncClient(headers=self.headers, timeout=30) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            return response.json()
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=8),
+        reraise=True,
+    )
     async def get_company_facts(self, cik: str) -> dict:
         cik = self.normalize_cik(cik)
         url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"

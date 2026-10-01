@@ -1,7 +1,7 @@
 import html
 import re
 import xml.etree.ElementTree as ET
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from email.utils import parsedate_to_datetime
 from urllib.parse import quote, urljoin
 
@@ -197,14 +197,18 @@ class SofiNewsProvider:
         return response.text, articles
 
     @staticmethod
-    def sec_articles(payload: dict) -> list[NewsArticle]:
-        recent = payload.get("filings", {}).get("recent", {})
-        cik = str(payload.get("cik", "1818874"))
+    def sec_articles(
+        payload: dict, *, cik: str | None = None, published_since: date | None = None
+    ) -> list[NewsArticle]:
+        recent = payload.get("filings", {}).get("recent", payload)
+        cik = str(cik or payload.get("cik", "1818874"))
         articles: list[NewsArticle] = []
         for index, accession in enumerate(recent.get("accessionNumber", [])):
             form = recent.get("form", [])[index]
             primary_document = recent.get("primaryDocument", [])[index]
             filing_date = recent.get("filingDate", [])[index]
+            if published_since and date.fromisoformat(filing_date) < published_since:
+                continue
             accession_path = accession.replace("-", "")
             url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accession_path}/{primary_document}"
             articles.append(
@@ -248,9 +252,63 @@ class IntelNewsProvider(SofiNewsProvider):
             source_name="Intel Investor Relations",
         )
 
+    async def fetch_investor_relations_history(
+        self, start_year: int
+    ) -> tuple[dict[str, str], list[NewsArticle]]:
+        payloads: dict[str, str] = {}
+        articles: list[NewsArticle] = []
+        seen: set[str] = set()
+        pattern = re.compile(
+            r'<article[^>]+class=["\'][^"\']*media-container[^"\']*["\'][^>]*>(?P<body>.*?)</article>',
+            re.IGNORECASE | re.DOTALL,
+        )
+        link_pattern = re.compile(
+            r'<div[^>]+class=["\'][^"\']*media-title[^"\']*["\'][^>]*>\s*'
+            r'<a[^>]+href=["\'](?P<url>[^"\']*/news-events/press-releases/detail/[^"\']+)["\'][^>]*>'
+            r'(?P<title>.*?)</a>',
+            re.IGNORECASE | re.DOTALL,
+        )
+        time_pattern = re.compile(r'<time[^>]+datetime=["\'](?P<date>[^"\']+)["\']', re.IGNORECASE)
+        async with httpx.AsyncClient(headers=self.headers, timeout=30, follow_redirects=True) as client:
+            for year in range(start_year, datetime.now(UTC).year + 1):
+                for page in range(1, 31):
+                    url = f"{INTEL_IR_URL}?year={year}&page={page}"
+                    response = await client.get(url)
+                    response.raise_for_status()
+                    key = str(response.url)
+                    payloads[key] = response.text
+                    page_articles = 0
+                    for block in pattern.finditer(response.text):
+                        link = link_pattern.search(block.group("body"))
+                        published = time_pattern.search(block.group("body"))
+                        if not link:
+                            continue
+                        article_url = urljoin(INTEL_IR_URL, html.unescape(link.group("url")))
+                        title = _clean(link.group("title")) or ""
+                        if not title or article_url in seen:
+                            continue
+                        seen.add(article_url)
+                        page_articles += 1
+                        published_at = None
+                        if published:
+                            published_at = datetime.fromisoformat(published.group("date")).replace(tzinfo=UTC)
+                        articles.append(NewsArticle(
+                            provider="intel_ir", provider_article_id=article_url,
+                            source_name="Intel Investor Relations", title=title,
+                            url=article_url, published_at=published_at,
+                            match_method="official_company_source", relevance_score=1.0,
+                        ))
+                    if page_articles == 0:
+                        break
+        return payloads, articles
+
     @staticmethod
-    def sec_articles(payload: dict) -> list[NewsArticle]:
-        articles = SofiNewsProvider.sec_articles(payload)
+    def sec_articles(
+        payload: dict, *, cik: str | None = None, published_since: date | None = None
+    ) -> list[NewsArticle]:
+        articles = SofiNewsProvider.sec_articles(
+            payload, cik=cik, published_since=published_since
+        )
         for article in articles:
             article.title = article.title.replace("SoFi Technologies", "Intel Corporation")
         return articles

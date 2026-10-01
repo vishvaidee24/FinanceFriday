@@ -1,5 +1,5 @@
 import hashlib
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from psycopg.rows import dict_row
 
@@ -18,7 +18,7 @@ def _content_hash(article: NewsArticle) -> str:
 
 
 async def ingest_company_news(
-    *, ticker: str, cik: str, provider: SofiNewsProvider
+    *, ticker: str, cik: str, provider: SofiNewsProvider, start_date: date | None = None
 ) -> int:
     ticker = ticker.upper()
     run_id = start_run(f"{ticker.lower()}_news", "multi_source")
@@ -31,9 +31,25 @@ async def ingest_company_news(
         geopolitical_payload, geopolitical_articles = (
             await provider.fetch_geopolitical_news()
         )
-        ir_payload, ir_articles = await provider.fetch_investor_relations()
-        sec_payload = await SecProvider().get_submissions(cik)
-        sec_articles = provider.sec_articles(sec_payload)
+        if start_date and isinstance(provider, IntelNewsProvider):
+            ir_payload, ir_articles = await provider.fetch_investor_relations_history(start_date.year)
+        else:
+            ir_payload, ir_articles = await provider.fetch_investor_relations()
+        sec_provider = SecProvider()
+        sec_payload = await sec_provider.get_submissions(cik)
+        sec_payloads = [sec_payload]
+        if start_date:
+            for item in sec_payload.get("filings", {}).get("files", []):
+                filing_to = date.fromisoformat(item["filingTo"])
+                if filing_to >= start_date:
+                    sec_payloads.append(await sec_provider.get_submission_file(item["name"]))
+        sec_articles = [
+            article
+            for payload in sec_payloads
+            for article in provider.sec_articles(
+                payload, cik=cik, published_since=start_date
+            )
+        ]
 
         source_batches = [
             ("google_news", google_payload, google_articles),
@@ -44,7 +60,7 @@ async def ingest_company_news(
                 geopolitical_articles,
             ),
             (f"{ticker.lower()}_ir", ir_payload, ir_articles),
-            ("sec_edgar", sec_payload, sec_articles),
+            ("sec_edgar", sec_payloads, sec_articles),
         ]
         articles: list[tuple[NewsArticle, str]] = []
         for source, payload, batch in source_batches:
@@ -194,7 +210,7 @@ async def ingest_sofi_news() -> int:
     )
 
 
-async def ingest_intel_news() -> int:
+async def ingest_intel_news(start_date: date | None = None) -> int:
     return await ingest_company_news(
-        ticker="INTC", cik="50863", provider=IntelNewsProvider()
+        ticker="INTC", cik="50863", provider=IntelNewsProvider(), start_date=start_date
     )

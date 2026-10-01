@@ -1,6 +1,6 @@
 import argparse
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 import structlog
 from app.common.logging import configure_logging
 from app.db.connection import get_connection
@@ -39,8 +39,8 @@ async def sofi_news() -> None:
     inserted = await ingest_sofi_news()
     log.info("sofi_news_complete", inserted=inserted)
 
-async def intel_news() -> None:
-    inserted = await ingest_intel_news()
+async def intel_news(start_date: date | None = None) -> None:
+    inserted = await ingest_intel_news(start_date=start_date)
     log.info("intel_news_complete", inserted=inserted)
 
 async def tracked_news() -> None:
@@ -100,7 +100,8 @@ def main() -> None:
     hourly_bars = sub.add_parser("stock-bars-1h")
     hourly_bars.add_argument("symbols", nargs="+")
     sub.add_parser("sofi-news")
-    sub.add_parser("intel-news")
+    intel = sub.add_parser("intel-news")
+    intel.add_argument("--start-date", type=date.fromisoformat)
     sub.add_parser("tracked-news")
     sub.add_parser("sofi-insiders")
     congress = sub.add_parser("sofi-congress")
@@ -127,7 +128,7 @@ def main() -> None:
     elif args.command == "sofi-news":
         asyncio.run(sofi_news())
     elif args.command == "intel-news":
-        asyncio.run(intel_news())
+        asyncio.run(intel_news(args.start_date))
     elif args.command == "tracked-news":
         asyncio.run(tracked_news())
     elif args.command == "sofi-insiders":
