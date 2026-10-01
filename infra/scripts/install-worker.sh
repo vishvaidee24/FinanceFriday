@@ -54,7 +54,7 @@ EOF
 
 cat >/etc/systemd/system/finance-sofi-news-hourly.service <<'EOF'
 [Unit]
-Description=FinanceFriday hourly SOFI news ingestion
+Description=FinanceFriday hourly tracked-company news ingestion
 After=network-online.target
 Wants=network-online.target
 
@@ -79,7 +79,7 @@ EOF
 
 cat >/etc/systemd/system/finance-sofi-news-hourly.timer <<'EOF'
 [Unit]
-Description=Run FinanceFriday SOFI news ingestion hourly
+Description=Run FinanceFriday tracked-company news ingestion hourly
 
 [Timer]
 OnCalendar=*-*-* *:10:00

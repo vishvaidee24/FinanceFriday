@@ -1,14 +1,14 @@
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from psycopg.rows import dict_row
 
-from app.common.s3 import RawArchive
 from app.common.news_classification import classify_news
+from app.common.s3 import RawArchive
 from app.db.connection import get_connection
 from app.db.pipeline import finish_run, start_run
 from app.models.news import NewsArticle
-from app.providers.news import SofiNewsProvider
+from app.providers.news import IntelNewsProvider, SofiNewsProvider
 from app.providers.sec import SecProvider
 
 
@@ -17,10 +17,12 @@ def _content_hash(article: NewsArticle) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
-async def ingest_sofi_news() -> int:
-    run_id = start_run("sofi_news", "multi_source")
-    fetched_at = datetime.now(timezone.utc)
-    provider = SofiNewsProvider()
+async def ingest_company_news(
+    *, ticker: str, cik: str, provider: SofiNewsProvider
+) -> int:
+    ticker = ticker.upper()
+    run_id = start_run(f"{ticker.lower()}_news", "multi_source")
+    fetched_at = datetime.now(UTC)
     archive = RawArchive()
 
     try:
@@ -30,7 +32,7 @@ async def ingest_sofi_news() -> int:
             await provider.fetch_geopolitical_news()
         )
         ir_payload, ir_articles = await provider.fetch_investor_relations()
-        sec_payload = await SecProvider().get_submissions("1818874")
+        sec_payload = await SecProvider().get_submissions(cik)
         sec_articles = provider.sec_articles(sec_payload)
 
         source_batches = [
@@ -41,14 +43,14 @@ async def ingest_sofi_news() -> int:
                 geopolitical_payload,
                 geopolitical_articles,
             ),
-            ("sofi_ir", ir_payload, ir_articles),
+            (f"{ticker.lower()}_ir", ir_payload, ir_articles),
             ("sec_edgar", sec_payload, sec_articles),
         ]
         articles: list[tuple[NewsArticle, str]] = []
         for source, payload, batch in source_batches:
             raw_key = archive.put_json(
                 provider=source,
-                dataset="sofi_news",
+                dataset=f"{ticker.lower()}_news",
                 object_name=f"run-{run_id}",
                 payload=payload,
                 observed_at=fetched_at,
@@ -62,14 +64,15 @@ async def ingest_sofi_news() -> int:
                     SELECT c.company_id
                     FROM core.company AS c
                     JOIN core.security AS s ON s.company_id = c.company_id
-                    WHERE s.ticker = 'SOFI'
+                    WHERE upper(s.ticker) = %s
                     ORDER BY s.valid_to NULLS FIRST, s.security_id DESC
                     LIMIT 1
-                    """
+                    """,
+                    (ticker,),
                 )
                 company = cur.fetchone()
                 if company is None:
-                    raise RuntimeError("SOFI company row is missing")
+                    raise RuntimeError(f"{ticker} company row is missing")
 
                 inserted = 0
                 for article, raw_key in articles:
@@ -183,3 +186,15 @@ async def ingest_sofi_news() -> int:
     except Exception as exc:
         finish_run(run_id, status="FAILED", error_message=str(exc))
         raise
+
+
+async def ingest_sofi_news() -> int:
+    return await ingest_company_news(
+        ticker="SOFI", cik="1818874", provider=SofiNewsProvider()
+    )
+
+
+async def ingest_intel_news() -> int:
+    return await ingest_company_news(
+        ticker="INTC", cik="50863", provider=IntelNewsProvider()
+    )

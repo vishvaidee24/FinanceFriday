@@ -1,7 +1,7 @@
 import html
 import re
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from urllib.parse import quote, urljoin
 
@@ -17,6 +17,7 @@ GOOGLE_NEWS_URL = (
     f"q={quote('\"SOFI stock\" OR \"SoFi Technologies\"')}&hl=en-US&gl=US&ceid=US:en"
 )
 SOFI_IR_URL = "https://investors.sofi.com/news/press-releases/default.aspx"
+INTEL_IR_URL = "https://www.intc.com/news-events/press-releases"
 MARKET_NEWS_URL = (
     "https://news.google.com/rss/search?"
     f"q={quote('\"stock market\" OR \"S&P 500\" OR \"Federal Reserve\"')}&hl=en-US&gl=US&ceid=US:en"
@@ -38,7 +39,7 @@ def _published(value: str | None) -> datetime | None:
     if not value:
         return None
     parsed = parsedate_to_datetime(value)
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 def is_sofi_company_news(value: str) -> bool:
@@ -65,6 +66,23 @@ def is_sofi_company_news(value: str) -> bool:
         "chief executive", "cfo", "acquisition", "member growth",
     )
     return "sofi" in folded and any(term in folded for term in company_context)
+
+
+def is_intel_company_news(value: str) -> bool:
+    folded = value.casefold()
+    strong_identifiers = (
+        "intel corporation", "nasdaq: intc", "nasdaq:intc", "$intc",
+        "intc stock", "intel stock", "intel shares",
+    )
+    if any(term in folded for term in strong_identifiers):
+        return True
+    company_context = (
+        "semiconductor", "chip", "foundry", "xeon", "core ultra", "gaudi",
+        "panther lake", "earnings", "revenue", "guidance", "quarter",
+        "price target", "analyst", "chief executive", "lip-bu tan",
+        "sec filing", "manufacturing", "fab", "processor", "cpu", "ai pc",
+    )
+    return "intel" in folded and any(term in folded for term in company_context)
 
 
 class SofiNewsProvider:
@@ -143,28 +161,35 @@ class SofiNewsProvider:
         reraise=True,
     )
     async def fetch_investor_relations(self) -> tuple[str, list[NewsArticle]]:
+        return await self._fetch_investor_relations(
+            SOFI_IR_URL, provider_name="sofi_ir", source_name="SoFi Investor Relations"
+        )
+
+    async def _fetch_investor_relations(
+        self, url: str, *, provider_name: str, source_name: str
+    ) -> tuple[str, list[NewsArticle]]:
         async with httpx.AsyncClient(headers=self.headers, timeout=30, follow_redirects=True) as client:
-            response = await client.get(SOFI_IR_URL)
+            response = await client.get(url)
             response.raise_for_status()
         pattern = re.compile(
-            r'<a[^>]+href=["\'](?P<url>[^"\']*/news/news-details/[^"\']+)["\'][^>]*>(?P<title>.*?)</a>',
+            r'<a[^>]+href=["\'](?P<url>[^"\']*(?:/news/news-details/|/news-events/press-releases/detail/)[^"\']+)["\'][^>]*>(?P<title>.*?)</a>',
             re.IGNORECASE | re.DOTALL,
         )
         seen: set[str] = set()
         articles: list[NewsArticle] = []
         for match in pattern.finditer(response.text):
-            url = urljoin(SOFI_IR_URL, html.unescape(match.group("url")))
+            article_url = urljoin(url, html.unescape(match.group("url")))
             title = _clean(match.group("title")) or ""
-            if not title or url in seen:
+            if not title or article_url in seen:
                 continue
-            seen.add(url)
+            seen.add(article_url)
             articles.append(
                 NewsArticle(
-                    provider="sofi_ir",
-                    provider_article_id=url,
-                    source_name="SoFi Investor Relations",
+                    provider=provider_name,
+                    provider_article_id=article_url,
+                    source_name=source_name,
                     title=title,
-                    url=url,
+                    url=article_url,
                     match_method="official_company_source",
                     relevance_score=1.0,
                 )
@@ -190,9 +215,42 @@ class SofiNewsProvider:
                     title=f"SoFi Technologies filing: {form}",
                     summary=f"Official {form} filing submitted to the SEC.",
                     url=url,
-                    published_at=datetime.fromisoformat(filing_date).replace(tzinfo=timezone.utc),
+                    published_at=datetime.fromisoformat(filing_date).replace(tzinfo=UTC),
                     match_method="cik",
                     relevance_score=1.0,
                 )
             )
+        return articles
+
+
+class IntelNewsProvider(SofiNewsProvider):
+    async def fetch_google_news(self) -> tuple[str, list[NewsArticle]]:
+        url = (
+            "https://news.google.com/rss/search?"
+            f"q={quote('\"INTC stock\" OR \"Intel Corporation\"')}&hl=en-US&gl=US&ceid=US:en"
+        )
+        payload, articles = await self._fetch_google_feed(
+            url,
+            require_sofi=False,
+            match_method="company_keyword",
+            relevance_score=0.8,
+        )
+        return payload, [
+            article
+            for article in articles
+            if is_intel_company_news(f"{article.title} {article.summary or ''}")
+        ]
+
+    async def fetch_investor_relations(self) -> tuple[str, list[NewsArticle]]:
+        return await self._fetch_investor_relations(
+            INTEL_IR_URL,
+            provider_name="intel_ir",
+            source_name="Intel Investor Relations",
+        )
+
+    @staticmethod
+    def sec_articles(payload: dict) -> list[NewsArticle]:
+        articles = SofiNewsProvider.sec_articles(payload)
+        for article in articles:
+            article.title = article.title.replace("SoFi Technologies", "Intel Corporation")
         return articles

@@ -6,7 +6,7 @@ from app.common.logging import configure_logging
 from app.db.connection import get_connection
 from app.db.securities import list_tracked_securities
 from app.pipelines.stock_bars import aggregate_stock_bars_1h, ingest_stock_bars
-from app.pipelines.news import ingest_sofi_news
+from app.pipelines.news import ingest_intel_news, ingest_sofi_news
 from app.pipelines.ownership import ingest_insider_transactions, ingest_sofi_insider_transactions
 from app.pipelines.congress import ingest_sofi_congress_trades
 from app.pipelines.analyst import ingest_analyst_ratings, ingest_sofi_analyst_ratings
@@ -38,6 +38,18 @@ def stock_bars_1h(symbols: list[str]) -> None:
 async def sofi_news() -> None:
     inserted = await ingest_sofi_news()
     log.info("sofi_news_complete", inserted=inserted)
+
+async def intel_news() -> None:
+    inserted = await ingest_intel_news()
+    log.info("intel_news_complete", inserted=inserted)
+
+async def tracked_news() -> None:
+    handlers = {"SOFI": ingest_sofi_news, "INTC": ingest_intel_news}
+    for security in list_tracked_securities():
+        handler = handlers.get(security.ticker)
+        if handler is not None:
+            inserted = await handler()
+            log.info("tracked_news_complete", ticker=security.ticker, inserted=inserted)
 
 async def sofi_insiders() -> None:
     inserted = await ingest_sofi_insider_transactions()
@@ -88,6 +100,8 @@ def main() -> None:
     hourly_bars = sub.add_parser("stock-bars-1h")
     hourly_bars.add_argument("symbols", nargs="+")
     sub.add_parser("sofi-news")
+    sub.add_parser("intel-news")
+    sub.add_parser("tracked-news")
     sub.add_parser("sofi-insiders")
     congress = sub.add_parser("sofi-congress")
     congress.add_argument("--year", type=int, action="append", dest="years")
@@ -112,6 +126,10 @@ def main() -> None:
         stock_bars_1h(args.symbols)
     elif args.command == "sofi-news":
         asyncio.run(sofi_news())
+    elif args.command == "intel-news":
+        asyncio.run(intel_news())
+    elif args.command == "tracked-news":
+        asyncio.run(tracked_news())
     elif args.command == "sofi-insiders":
         asyncio.run(sofi_insiders())
     elif args.command == "sofi-congress":

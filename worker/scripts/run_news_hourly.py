@@ -1,4 +1,4 @@
-"""Load the RDS secret from AWS and run hourly SOFI news ingestion."""
+"""Load the RDS secret from AWS and run hourly tracked-company news ingestion."""
 
 import json
 import os
@@ -22,7 +22,7 @@ def main() -> None:
         f"postgresql://{username}:{password}@{host}:{port}/{database}"
     )
 
-    os.execv(sys.executable, [sys.executable, "-m", "app.cli", "sofi-news"])
+    os.execv(sys.executable, [sys.executable, "-m", "app.cli", "tracked-news"])
 
 
 if __name__ == "__main__":
