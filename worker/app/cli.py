@@ -5,7 +5,11 @@ import structlog
 from app.common.logging import configure_logging
 from app.db.connection import get_connection
 from app.db.securities import list_tracked_securities
-from app.pipelines.stock_bars import aggregate_stock_bars_1h, ingest_stock_bars
+from app.pipelines.stock_bars import (
+    aggregate_stock_bar_rollups,
+    aggregate_stock_bars_1h,
+    ingest_stock_bars,
+)
 from app.pipelines.news import ingest_intel_news, ingest_sofi_news
 from app.pipelines.ownership import ingest_insider_transactions, ingest_sofi_insider_transactions
 from app.pipelines.congress import ingest_sofi_congress_trades
@@ -28,12 +32,22 @@ async def stock_bars(symbols: list[str], minutes: int) -> None:
     log.info("stock_bars_complete", symbols=symbols, inserted=inserted)
 
 async def tracked_stock_bars(minutes: int) -> None:
-    for security in list_tracked_securities():
-        await stock_bars([security.ticker], minutes)
+    tracked_symbols = [security.ticker for security in list_tracked_securities()]
+    if not tracked_symbols:
+        return
+    await stock_bars(tracked_symbols, minutes)
 
 def stock_bars_1h(symbols: list[str]) -> None:
     affected = aggregate_stock_bars_1h(symbols=symbols)
     log.info("stock_bars_1h_complete", symbols=symbols, affected=affected)
+
+
+def stock_bar_rollups(symbols: list[str], provider: str) -> None:
+    affected = aggregate_stock_bar_rollups(symbols=symbols, provider=provider)
+    log.info(
+        "stock_bar_rollups_complete", symbols=symbols,
+        provider=provider, affected=affected,
+    )
 
 async def sofi_news() -> None:
     inserted = await ingest_sofi_news()
@@ -99,6 +113,9 @@ def main() -> None:
     tracked_bars.add_argument("--minutes", type=int, default=15)
     hourly_bars = sub.add_parser("stock-bars-1h")
     hourly_bars.add_argument("symbols", nargs="+")
+    rollups = sub.add_parser("stock-bar-rollups")
+    rollups.add_argument("symbols", nargs="+")
+    rollups.add_argument("--provider", choices=("alpaca",), required=True)
     sub.add_parser("sofi-news")
     intel = sub.add_parser("intel-news")
     intel.add_argument("--start-date", type=date.fromisoformat)
@@ -125,6 +142,8 @@ def main() -> None:
         asyncio.run(tracked_stock_bars(args.minutes))
     elif args.command == "stock-bars-1h":
         stock_bars_1h(args.symbols)
+    elif args.command == "stock-bar-rollups":
+        stock_bar_rollups(args.symbols, args.provider)
     elif args.command == "sofi-news":
         asyncio.run(sofi_news())
     elif args.command == "intel-news":

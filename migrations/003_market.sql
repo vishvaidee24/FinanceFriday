@@ -30,6 +30,6 @@ CREATE TABLE IF NOT EXISTS market.stock_bar_1h (
     trade_count BIGINT,
     vwap NUMERIC(18,6),
     source TEXT NOT NULL DEFAULT 'derived',
-    PRIMARY KEY (security_id, ts)
+    PRIMARY KEY (security_id, ts, source)
 );
 COMMIT;

@@ -74,7 +74,9 @@ resource "aws_instance" "worker" {
   }
 
   lifecycle {
-    ignore_changes = [ami]
+    # AMI and bootstrap script changes are applied through the SSM-managed
+    # worker release; do not churn the existing instance for those values.
+    ignore_changes = [ami, user_data]
   }
 
   user_data = <<-EOF

@@ -126,7 +126,7 @@ locals {
     metrics_collection_interval = 60
   })
 
-  install_worker_script = templatefile("${path.root}/../../scripts/install-worker.sh", {
+  install_worker_script = replace(templatefile("${path.root}/../../scripts/install-worker.sh", {
     artifact_bucket                = module.s3.raw_bucket_name
     artifact_key                   = aws_s3_object.worker_artifact.key
     aws_region                     = var.aws_region
@@ -136,7 +136,7 @@ locals {
     rds_endpoint                   = module.rds.endpoint
     db_name                        = var.db_name
     cloudwatch_agent_config_base64 = base64encode(local.cloudwatch_agent_config)
-  })
+  }), "\r\n", "\n")
 }
 
 resource "aws_ssm_association" "install_worker" {

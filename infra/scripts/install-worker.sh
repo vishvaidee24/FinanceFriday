@@ -38,6 +38,7 @@ Environment=ALPACA_SECRET_ARN=${alpaca_secret_arn}
 Environment=RDS_ENDPOINT=${rds_endpoint}
 Environment=RDS_PORT=5432
 Environment=DB_NAME=${db_name}
+Environment=RAW_BUCKET_NAME=${artifact_bucket}
 ExecStart=/opt/finance-platform/venv/bin/python /opt/finance-platform/current/scripts/run_hourly.py
 TimeoutStartSec=45min
 

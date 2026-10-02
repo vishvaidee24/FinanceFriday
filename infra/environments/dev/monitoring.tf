@@ -57,6 +57,75 @@ resource "aws_oam_link" "finance_dev" {
   depends_on = [aws_oam_sink_policy.finance_monitoring]
 }
 
+# CloudWatch cross-account dashboard widgets use these roles even when the
+# accounts are also connected through Observability Access Manager.
+resource "aws_iam_role" "cloudwatch_cross_account_monitoring" {
+  provider = aws.admin
+
+  name = "ServiceRoleForCloudWatchCrossAccountV2"
+  path = "/service-role/"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "cloudwatch-crossaccount.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "cloudwatch_cross_account_monitoring" {
+  provider = aws.admin
+
+  name = "CrossAccountAccess"
+  role = aws_iam_role.cloudwatch_cross_account_monitoring.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "sts:AssumeRole"
+      Resource = "arn:aws:iam::${var.finance_account_id}:role/CloudWatch-CrossAccountSharingRole"
+    }]
+  })
+}
+
+resource "aws_iam_role" "cloudwatch_cross_account_sharing" {
+  name = "CloudWatch-CrossAccountSharingRole"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        AWS = "arn:aws:iam::${var.admin_account_id}:root"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "cloudwatch_cross_account_sharing" {
+  name = "ReadCloudWatchMetrics"
+  role = aws_iam_role.cloudwatch_cross_account_sharing.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "cloudwatch:GetMetricData",
+        "cloudwatch:GetMetricStatistics",
+        "cloudwatch:ListMetrics",
+      ]
+      Resource = "*"
+    }]
+  })
+}
+
 resource "aws_iam_role_policy" "worker_cloudwatch_metrics" {
   name = "${var.project_name}-worker-cloudwatch-metrics"
   role = module.worker.iam_role_name
